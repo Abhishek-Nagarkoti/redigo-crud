@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"github.com/Abhishek-Nagarkoti/redigo-crud/models"
 	"github.com/garyburd/redigo/redis"
 	"github.com/satori/go.uuid"
 	"gopkg.in/gin-gonic/gin.v1"
@@ -10,13 +11,6 @@ import (
 
 type Handler struct {
 	DB redis.Conn
-}
-
-type User struct {
-	Id        string `json:"_id" bson:"_id"`
-	FirstName string `json:"first_name" bson:"first_name"`
-	LastName  string `json:"last_name" bson:"last_name"`
-	Gender    string `json:"gender" bson:"gender"`
 }
 
 /*=================================
@@ -37,17 +31,16 @@ func (h *Handler) Connect() {
 =================================*/
 
 func (h *Handler) Set(ctx *gin.Context) {
-	user := User{}
+	user := models.User{}
 	if err := ctx.BindJSON(&user); err != nil {
 		ctx.JSON(400, gin.H{"Error": "Validation error"})
 	} else {
 		user.Id = uuid.NewV1().String()
-		log.Println("user", user)
-		_, err := redis.String(h.DB.Do("HSET", "user:"+user.Id, user))
-		if err != nil {
-			ctx.JSON(500, gin.H{"error": err})
+		err, userData := user.Create(h.DB)
+		if err == nil {
+			ctx.JSON(200, gin.H{"user": userData})
 		} else {
-			ctx.JSON(200, gin.H{"All": "Good"})
+			ctx.JSON(500, gin.H{"error": err})
 		}
 	}
 }
@@ -59,15 +52,22 @@ func (h *Handler) Set(ctx *gin.Context) {
 ===================================*/
 
 func (h *Handler) Get(ctx *gin.Context) {
-	value, _ := ctx.GetQuery("key")
+	value, _ := ctx.GetQuery("id")
 	if value == "" {
-		ctx.JSON(400, gin.H{"Error": "Wrong query string"})
-	} else {
-		_, err := redis.String(h.DB.Do("HGETALL", "user:"+value))
+		user := models.User{}
+		err, users := user.GetALL(h.DB)
 		if err != nil {
 			ctx.JSON(500, gin.H{"error": err})
 		} else {
-			ctx.JSON(200, gin.H{"All": "Good"})
+			ctx.JSON(200, gin.H{"users": users})
+		}
+	} else {
+		user := models.User{}
+		err, userData := user.Get(h.DB, value)
+		if err != nil {
+			ctx.JSON(500, gin.H{"error": err})
+		} else {
+			ctx.JSON(200, gin.H{"user": userData})
 		}
 	}
 }
@@ -79,17 +79,18 @@ func (h *Handler) Get(ctx *gin.Context) {
 ===================================*/
 
 func (h *Handler) Update(ctx *gin.Context) {
-	// value, _ := ctx.GetQuery("key")
-	// if value == "" {
-	// 	ctx.JSON(400, gin.H{"Error": "Wrong query string"})
-	// } else {
-	// 	reply, err := redis.String(h.DB.Do("get", value))
-	// 	if err != nil {
-	// 		ctx.JSON(500, gin.H{"error": err})
-	// 	} else {
-	ctx.JSON(200, gin.H{"All": "Good"})
-	// 	}
-	// }
+	user := models.User{}
+	if err := ctx.BindJSON(&user); err != nil {
+		ctx.JSON(400, gin.H{"Error": "Validation error"})
+	} else {
+		user.Id = ctx.Param("id")
+		err, userData := user.Update(h.DB)
+		if err == nil {
+			ctx.JSON(200, gin.H{"user": userData})
+		} else {
+			ctx.JSON(500, gin.H{"error": err})
+		}
+	}
 }
 
 /*-----  End of Update  ------*/
@@ -99,17 +100,31 @@ func (h *Handler) Update(ctx *gin.Context) {
 ===================================*/
 
 func (h *Handler) Delete(ctx *gin.Context) {
-	// value, _ := ctx.GetQuery("key")
-	// if value == "" {
-	// 	ctx.JSON(400, gin.H{"Error": "Wrong query string"})
-	// } else {
-	// 	reply, err := redis.String(h.DB.Do("get", value))
-	// 	if err != nil {
-	// 		ctx.JSON(500, gin.H{"error": err})
-	// 	} else {
-	ctx.JSON(200, gin.H{"All": "Good"})
-	// 	}
-	// }
+	user := models.User{}
+	user.Id = ctx.Param("id")
+	err := user.Delete(h.DB)
+	if err == nil {
+		ctx.JSON(200, gin.H{"All": "Good"})
+	} else {
+		ctx.JSON(500, gin.H{"error": err})
+	}
 }
 
 /*-----  End of Delete  ------*/
+
+/*===================================
+***   find by name from database  ***
+===================================*/
+
+func (h *Handler) Find(ctx *gin.Context) {
+	user := models.User{}
+	user.FirstName = ctx.Param("name")
+	err, users := user.Find(h.DB)
+	if err == nil {
+		ctx.JSON(200, gin.H{"users": users})
+	} else {
+		ctx.JSON(500, gin.H{"error": err})
+	}
+}
+
+/*-----  End of Find  ------*/

@@ -33,8 +33,9 @@ func main() {
 	{
 		api.POST("/", h.Set)
 		api.GET("/", h.Get)
-		api.PUT("/", h.Update)
-		api.DELETE("/", h.Delete)
+		api.PUT("/:id", h.Update)
+		api.DELETE("/:id", h.Delete)
+		api.GET("/:name", h.Find)
 	}
 
 	// By default it serves on :8080 unless a
