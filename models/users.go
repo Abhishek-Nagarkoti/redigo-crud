@@ -1,8 +1,9 @@
 package models
 
 import (
+	// "github.com/Abhishek-Nagarkoti/redigo-crud/lib"
 	"github.com/garyburd/redigo/redis"
-	// "log"
+	"reflect"
 	"regexp"
 )
 
@@ -14,20 +15,31 @@ type User struct {
 }
 
 func (u User) Create(DB redis.Conn) (error, User) {
-	_, err := redis.String(DB.Do("HMSET", "user:"+u.Id, "_id", u.Id, "first_name", u.FirstName, "last_name", u.LastName, "gender", u.Gender))
-	if err != nil {
-		return err, u
-	} else {
-		reply, err := redis.Values(DB.Do("HGETALL", "user:"+u.Id))
-		if err != nil {
-			return err, u
+	sv := reflect.ValueOf(u)
+	st := reflect.TypeOf(u)
+	var err error
+	err = nil
+	for i := 0; i < sv.NumField(); i++ {
+		tag := st.Field(i).Tag.Get("redis")
+		val := sv.Field(i).Interface().(string)
+		if i == 0 {
+			_, err = DB.Do("HMSET", "user:"+u.Id, tag, val)
+			if err != nil {
+				_, _ = DB.Do("DEL", "user:"+u.Id)
+				break
+			}
 		} else {
-			if err = redis.ScanStruct(reply, &u); err != nil {
-				return err, u
-			} else {
-				return nil, u
+			_, err = DB.Do("HSETNX", "user:"+u.Id, tag, val)
+			if err != nil {
+				_, _ = DB.Do("DEL", "user:"+u.Id)
+				break
 			}
 		}
+	}
+	if err == nil {
+		return nil, u
+	} else {
+		return err, u
 	}
 }
 
