@@ -22,6 +22,8 @@ func (h *Handler) Connect() {
 	if err != nil {
 		log.Fatalf("Got error when connect database, the error is '%v'", err)
 	}
+	user := models.User{}
+	user.Automigration(h.DB)
 }
 
 /*-----  End of connect  ----*/

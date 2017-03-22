@@ -3,8 +3,10 @@ package models
 import (
 	// "github.com/Abhishek-Nagarkoti/redigo-crud/lib"
 	"github.com/garyburd/redigo/redis"
+	"log"
 	"reflect"
 	"regexp"
+	// "strconv"
 )
 
 type User struct {
@@ -12,6 +14,8 @@ type User struct {
 	FirstName string `redis:"first_name" json:"first_name"`
 	LastName  string `redis:"last_name" json:"last_name"`
 	Gender    string `redis:"gender" json:"gender"`
+	Yoo       string `redis:"yoo" json:"yoo"`
+	Hoo       string `redis:"hoo" json:"hoo"`
 }
 
 func (u User) Create(DB redis.Conn) (error, User) {
@@ -94,11 +98,10 @@ func (u User) GetALL(DB redis.Conn) (error, []User) {
 			if err != nil {
 				//Do nothing
 			} else {
-				user := User{}
-				if err = redis.ScanStruct(reply, &user); err != nil {
+				if err = redis.ScanStruct(reply, &u); err != nil {
 					//Do nothing
 				} else {
-					users = append(users, user)
+					users = append(users, u)
 				}
 			}
 		}
@@ -137,4 +140,90 @@ func (u User) Find(DB redis.Conn) (error, []User) {
 		}
 		return nil, users
 	}
+}
+
+func (u User) Automigration(DB redis.Conn) error {
+	values, err := redis.Values(DB.Do("KEYS", "user:*"))
+	if err != nil {
+		return err
+	} else {
+		if len(values) > 0 {
+			tags := u.Got()
+			var notfound []string
+			for _, num := range tags {
+				val, _ := redis.Int(DB.Do("HEXISTS", values[0], num))
+				if val == 0 {
+					notfound = append(notfound, num)
+				}
+			}
+			if len(notfound) > 0 {
+				u.NotFound(values, notfound, DB)
+			}
+			useless := u.Useless(values[0], tags, DB)
+			err = u.RemoveUseless(values, useless, DB)
+			if err == nil {
+				return nil
+			} else {
+				return err
+			}
+		} else {
+			return nil
+		}
+	}
+}
+
+func (u User) Got() []string {
+	var tags []string
+	sv := reflect.ValueOf(u)
+	st := reflect.TypeOf(u)
+	for i := 0; i < sv.NumField(); i++ {
+		tags = append(tags, st.Field(i).Tag.Get("redis"))
+	}
+	return tags
+}
+
+func (u User) NotFound(values []interface{}, data []string, DB redis.Conn) {
+	for _, value := range values {
+		for _, num := range data {
+			_, _ = DB.Do("HSETNX", value, num, "")
+		}
+	}
+}
+
+func (u User) Useless(value interface{}, data []string, DB redis.Conn) []string {
+	var keys []string
+	reply, err := redis.Values(DB.Do("HGETALL", value))
+	if err != nil {
+		//Do nothing
+	} else {
+		if err = redis.ScanStruct(reply, &u); err != nil {
+			//Do nothing
+		} else {
+			for i := 0; i < len(reply); i += 2 {
+				abort := false
+				b := make([]byte, len(reply[i].([]uint8)))
+				for i, v := range reply[i].([]uint8) {
+					b[i] = byte(v)
+				}
+				for _, tag := range data {
+					if tag == string(b) {
+						abort = true
+					}
+				}
+				if !abort {
+					keys = append(keys, string(b))
+				}
+			}
+		}
+	}
+	return keys
+}
+
+func (u User) RemoveUseless(values []interface{}, useless []string, DB redis.Conn) error {
+	for i := 0; i < len(values); i += 1 {
+		for _, val := range useless {
+			_, _ = redis.Int(DB.Do("HDEL", values[i], val))
+		}
+	}
+	return nil
 }
